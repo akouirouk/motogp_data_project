@@ -1,0 +1,14 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+# ignore Mac system files
+.DS_store
+
+# ignore VSCode project settings
+.vscode/
+# ignore virtual environemnt
+/venv/
+# ignore all .env files
+*.env
+
+# ignore log files inside logger/logs
+logger/logs/*
