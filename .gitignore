@@ -12,3 +12,7 @@ __pycache__/
 
 # ignore log files inside logger/logs
 logger/logs/*
+
+
+# ignore output files in data/
+data/
