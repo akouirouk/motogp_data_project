@@ -1,13 +1,9 @@
 import asyncio
-import json
 
-from get_data.send_requests import execute_async_rider_requests
+from db.operations import update_rider_tables, mysql_connect, create_mysql_data_infra
+from get_data.scrape import collect_gp_urls, parse_html_and_format
+from get_data.send_requests import execute_async_requests
 from logger.log import setup_logger
-from get_data.scrape import (
-    collect_rider_urls,
-    html_from_riders_page,
-    extract_rider_data,
-)
 
 if __name__ == "__main__":
     # setup loggers
@@ -22,30 +18,31 @@ if __name__ == "__main__":
         logging_level="ERROR",
     )
 
-    # get the html from rider page
-    motogp_website_response = html_from_riders_page()
+    # list containing motogp.com webpages listing riders and teams
+    motogp_webpage = ["https://www.motogp.com/en/riders/motogp"]
+    # get the html response from riders page - index because function returns list but only gave a list with one element
+    riders_html = asyncio.run(execute_async_requests(motogp_webpage))[0]
 
     # list of GP classes
     gp_classes = ["MotoGP", "Moto2", "Moto3", "MotoE"]
 
     # loop through each GP class to scrape rider data and write to json file for the specified class
     for gp_class in gp_classes:
-        # collect rider data from response
-        rider_urls = collect_rider_urls(motogp_website_response, gp_class)
-        # call function to get the response objects of each rider in the GP class
-        rider_responses = asyncio.run(execute_async_rider_requests(rider_urls))
+        # collect rider urls from indexing rider & team urls from responses
+        rider_urls = collect_gp_urls(riders_html, gp_class, "riders_official")
+        # collect responses from requests
+        rider_responses = asyncio.run(execute_async_requests(rider_urls))
+        # parse html and output formatted data to file
+        parse_html_and_format(rider_responses, gp_class, "riders_official")
 
-        # initialize dict to store riders
-        riders = {}
-        # loop through rider_resposes
-        for i, response in enumerate(rider_responses):
-            # call function to scrape data from each response in rider_responses
-            rider = extract_rider_data(response)
-            # if rider is NOT None:
-            if rider:
-                # update rider_data with rider
-                riders.update({i: rider})
+    # create mysql database and tables to store rider & team data
+    server_conn = mysql_connect("localhost", None)
+    # execute sql commands to create data infra in mysql server
+    create_mysql_data_infra(server_conn)
 
-        # write riders to a json file
-        with open(f"./data/{gp_class.lower()}_riders.json", "w") as json_file:
-            json.dump(riders, json_file)
+    # connect to mysql database
+    db_conn = mysql_connect("localhost", "motogp")
+    # update rider tables in MYSQL database with JSON files from ./data/riders/
+    update_rider_tables(db_conn)
+
+    # execute sql commands from separate .sql file to create team tables via rider tables

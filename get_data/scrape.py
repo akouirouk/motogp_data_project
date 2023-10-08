@@ -1,56 +1,61 @@
+import country_converter as coco
 from bs4 import BeautifulSoup
 import httpx
 
-from urllib.parse import urlencode
+from dataclasses import dataclass, asdict
+from typing import Literal, get_args
 from datetime import datetime
+import json
 import re
 
-from configs.globals import SCRAPEOPS_API_KEY
 from get_data.helpers import extract_text
 
-
-def html_from_riders_page() -> httpx.Response:
-    """Gets the HTML containing rider data from all GP classes.
-
-    Raises:
-        err: If there is an error in the HTTP GET request
-
-    Returns:
-        requests_html.HTMLResponse: The response object from the GET request
-    """
-
-    # define url
-    url = "https://www.motogp.com/en/riders/motogp"
-
-    # open httpx client session
-    with httpx.Client() as client:
-        try:
-            # define the proxy parameters
-            proxy_params = {
-                "api_key": SCRAPEOPS_API_KEY,
-                "url": url,
-            }
-            # make HTTP GET request
-            response = client.get(
-                url="https://proxy.scrapeops.io/v1/",
-                params=urlencode(proxy_params),
-                timeout=60,
-            )
-            # if the response status code is 200 - OK
-            if response.status_code == 200:
-                # return the response
-                return response
-        except httpx.RequestError as err:
-            # raise request error
-            raise err
+# define the options for the webpage to be scraped
+webpages = Literal["riders_official", "teams_official"]
 
 
-def collect_rider_urls(response: httpx.Response, gp_class: str) -> list[str]:
-    """Scrapes a rider page on motogp.com for links to each rider in the GP class.
+def parse_html_and_format(
+    responses: list[httpx.Response],
+    gp_class: str,
+    webpage: Literal["riders_official", "teams_official"],
+) -> None:
+    # get all arguments from webpages
+    webpage_options = get_args(webpages)
+    # raise assertion if the parameter webpage is NOT in webpage_options
+    assert webpage in webpage_options, f"'{webpage}' is not in {webpage_options}"
+
+    # initialize dict to store riders
+    consolidated_data = {}
+
+    # loop through responses
+    for i, response in enumerate(responses):
+        # if responses are from the "Riders" page on motogp.com
+        if webpage == "riders_official":
+            # define file path for the formatted output
+            output_file = f"./data/riders/{gp_class.lower()}_riders.json"
+            # call function to scrape rider data from each response in responses
+            data = extract_rider_data(response)
+        # if data is NOT None
+        if data:
+            # update consolidated_data with data
+            consolidated_data.update({i: data})
+
+    # write riders to a json file
+    with open(output_file, "w") as json_file:
+        json.dump(consolidated_data, json_file)
+
+
+def collect_gp_urls(
+    response: httpx.Response,
+    gp_class: str,
+    webpage: webpages,
+) -> list[str]:
+    """Scrapes the riders or teams pageon  motogp.com for links to each rider/team in the class.
 
     Args:
         response (requests_html.HTMLResponse): The HTTP response object
         gp_class (str): The GP class (ex. "MotoGP", "Moto2", "Moto3", "MotoE")
+        webpage (Literal): Describes the webpage origin
 
     Raises:
         IndexError: If the list of riders is empty
@@ -59,30 +64,55 @@ def collect_rider_urls(response: httpx.Response, gp_class: str) -> list[str]:
         list[str]: The list of URLs to each rider in the specified GP class.
     """
 
+    # get all arguments from webpages
+    webpage_options = get_args(webpages)
+    # raise assertion if the parameter webpage is NOT in webpage_options
+    assert webpage in webpage_options, f"'{webpage}' is not in {webpage_options}"
+
     # initalize list to store rider urls
-    rider_urls = []
+    urls = []
+
+    # if the HTML is from the rider webpage on motogp.com
+    if webpage == "riders_official":
+        # define the CSS selector for the parent and child element
+        parent = f"div[class*='rider-grid__{gp_class.lower()}']"
+        child = "div[class*='rider-list__container'] a"
+        # define url prefix
+        url_prefix = "https://www.motogp.com"
 
     # parse HTML with beautifulsoup
     soup = BeautifulSoup(response.content, "html.parser")
-    # define the CSS selector for the target element
-    css_selector = f"div[class*='rider-grid__{gp_class.lower()}']"
-    # find all rider elements
-    riders = soup.select_one(css_selector)
 
+    # find all rider/team elements
+    elements = soup.select_one(parent)
     # loop through attributes for each rider element
-    for attribs in riders.select("div[class*='rider-list__container'] a"):
+    for attribs in elements.select(child):
         # get href attribute
         url = attribs["href"]
 
         # if url is not an empty string
         if url:
             # append url prefix to url
-            complete_url = "https://www.motogp.com" + url
+            complete_url = url_prefix + url
             # append url to rider_urls
-            rider_urls.append(complete_url)
+            urls.append(complete_url)
 
     # return the list of rider_urls
-    return rider_urls
+    return urls
+
+
+@dataclass
+class Rider:
+    rider_name: str
+    hero_hashtag: str
+    race_number: int
+    team: str
+    bike: str
+    representing_country: str
+    place_of_birth: str
+    date_of_birth: datetime.date
+    height: int
+    weight: int
 
 
 def extract_rider_data(response: httpx.Response) -> dict:
@@ -107,7 +137,15 @@ def extract_rider_data(response: httpx.Response) -> dict:
     team = extract_text(soup, "span[class*='rider-hero__details-team']")
 
     # country where rider was born
-    birth_country = extract_text(soup, "span[class*='rider-hero__details-country']")
+    representing_country = extract_text(
+        soup, "span[class*='rider-hero__details-country']"
+    )
+    # if representing_country is NOT None
+    if representing_country:
+        # create country converter object
+        cc = coco.CountryConverter()
+        # convert country name to country code 'ISO2' - 2 letter abbreviation
+        representing_country = cc.convert(names=representing_country, to="ISO2")
 
     # define the CSS selector for the table "Rider Bio" stats
     table_selector = "div[class='rider-bio__table']"
@@ -135,14 +173,14 @@ def extract_rider_data(response: httpx.Response) -> dict:
             # set date_of_birth to None
             date_of_birth = None
 
-        # city where rider was born
-        birth_city = bio_elements[2].get_text(strip=True)
-        # if birth_city is "-" (meaning the data is not available)
-        if birth_city == "-":
-            birth_city = None
+        # where rider was born
+        place_of_birth = bio_elements[2].get_text(strip=True).upper()
+        # if place_of_birth is "-" (meaning the data is not available)
+        if place_of_birth == "-":
+            place_of_birth = None
 
         # if "MotoGP" is NOT in bike (meaning that the rider is NOT a legend - extract non-legend stats from rider_bio table)
-        if bike and "MotoGP" not in bike:
+        if bike and "MOTOGP" not in bike:
             # height of the rider (in centimeters)
             str_height = bio_elements[3].get_text(strip=True).upper()
             # extract numbers from str_height
@@ -165,19 +203,19 @@ def extract_rider_data(response: httpx.Response) -> dict:
             height = None
             weight = None
 
-    # contrust dict with the above data points
-    rider_data = {
-        "rider_name": rider_name,
-        "hero_hashtag": hero_hashtag,
-        "race_number": race_number,
-        "team": team,
-        "bike": bike,
-        "birth_city": birth_city,
-        "birth_country": birth_country,
-        "date_of_birth": date_of_birth,
-        "height": height,
-        "weight": weight,
-    }
+    # create new Rider class object
+    new_rider = Rider(
+        rider_name=rider_name,
+        hero_hashtag=hero_hashtag,
+        race_number=race_number,
+        team=team,
+        bike=bike,
+        representing_country=representing_country,
+        place_of_birth=place_of_birth,
+        date_of_birth=date_of_birth,
+        height=height,
+        weight=weight,
+    )
 
-    # return constructed dictionary
-    return rider_data
+    # return new_rider as a dict
+    return asdict(new_rider)

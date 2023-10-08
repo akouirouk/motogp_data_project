@@ -15,4 +15,4 @@ logger/logs/*
 
 
 # ignore output files in data/
-data/
+data/*

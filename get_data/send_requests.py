@@ -24,7 +24,7 @@ async def log_response(response: httpx.Response) -> None:
     )
 
 
-async def get_rider_response(
+async def fetch_html(
     client: httpx.AsyncClient, semaphore: asyncio.Semaphore, url: str
 ) -> httpx.Response:
     """The the response object of a GP rider.
@@ -63,25 +63,28 @@ async def get_rider_response(
             )
 
 
-async def execute_async_rider_requests(rider_urls: list[str]) -> None:
+async def execute_async_requests(urls: list[str]) -> list[httpx.Response]:
     """Execute async HTTP requests to get response objects from each rider url.
 
     Args:
-        rider_urls (list[str]): The list of URLs to each rider in the selected GP class.
+        urls (list[str]): The list of URLs to fetch html from
+        semaphore (asyncio.Semaphore): The asynchronous limiter
+
+    Returns:
+        httpx.Response: The response object from the HTTP GET request
     """
     # initialize list to store async tasks
     tasks = []
 
-    # create semaphore to limit async requests to 5
     semaphore = asyncio.Semaphore(5)
     # create async client with httpx to make requests
     async with httpx.AsyncClient(event_hooks={"response": [log_response]}) as client:
-        # loop through usersnames
-        for url in rider_urls:
-            # append function call as async task
-            tasks.append(get_rider_response(client, semaphore, url))
-        # gather results from tasks
-        rider_responses = await asyncio.gather(*tasks)
+        # loop through urls
+        tasks = [
+            asyncio.create_task(fetch_html(client, semaphore, url)) for url in urls
+        ]
+        # append function call as async task
+        responses = await asyncio.gather(*tasks)
 
-    # return the response objects from all rider GET requests
-    return rider_responses
+    # return the response objects from all fetch_html tasks
+    return responses
