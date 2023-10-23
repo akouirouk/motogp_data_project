@@ -5,4 +5,5 @@ country-converter==1.0.0
 httpx==0.25.0
 mysql-connector-python==8.1.0
 pandas==2.1.1
+pydantic==2.4.2
 python-dotenv==1.0.0

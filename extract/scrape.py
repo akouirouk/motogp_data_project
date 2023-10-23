@@ -1,14 +1,14 @@
+from pydantic import Field, BaseModel, PositiveInt
 import country_converter as coco
 from bs4 import BeautifulSoup
 import httpx
 
-from dataclasses import dataclass, asdict
-from typing import Literal, get_args
+from typing import Literal, get_args, Optional
 from datetime import datetime
 import json
 import re
 
-from get_data.helpers import extract_text
+from extract.helpers import extract_text
 
 # define the options for the webpage to be scraped
 webpages = Literal["riders_official", "teams_official"]
@@ -101,18 +101,17 @@ def collect_gp_urls(
     return urls
 
 
-@dataclass
-class Rider:
+class Rider(BaseModel):
     rider_name: str
     hero_hashtag: str
-    race_number: int
-    team: str
-    bike: str
-    representing_country: str
-    place_of_birth: str
-    date_of_birth: datetime.date
-    height: int
-    weight: int
+    race_number: PositiveInt = Field(ge=0, le=99)
+    team: Optional[str]
+    bike: Optional[str]
+    representing_country: str = Field(max_length=2)
+    place_of_birth: Optional[str]
+    date_of_birth: Optional[datetime.date]
+    height: Optional[PositiveInt] = Field(ge=152, le=200)
+    weight: Optional[PositiveInt] = Field(ge=40, le=115)
 
 
 def extract_rider_data(response: httpx.Response) -> dict:
@@ -218,4 +217,4 @@ def extract_rider_data(response: httpx.Response) -> dict:
     )
 
     # return new_rider as a dict
-    return asdict(new_rider)
+    return new_rider.dict()

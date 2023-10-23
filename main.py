@@ -1,8 +1,8 @@
 import asyncio
 
 from db.operations import update_rider_tables, mysql_connect, execute_sql_from_file
-from get_data.scrape import collect_gp_urls, parse_html_and_format
-from get_data.send_requests import execute_async_requests
+from extract.scrape import collect_gp_urls, parse_html_and_format
+from extract.send_requests import execute_async_requests
 from logger.log import setup_logger
 
 if __name__ == "__main__":
