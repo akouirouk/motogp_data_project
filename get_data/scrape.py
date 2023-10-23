@@ -32,7 +32,7 @@ def parse_html_and_format(
         # if responses are from the "Riders" page on motogp.com
         if webpage == "riders_official":
             # define file path for the formatted output
-            output_file = f"./data/riders/{gp_class.lower()}_riders.json"
+            output_file = f"./data/{gp_class.lower()}_riders.json"
             # call function to scrape rider data from each response in responses
             data = extract_rider_data(response)
         # if data is NOT None

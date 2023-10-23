@@ -1,6 +1,6 @@
 import asyncio
 
-from db.operations import update_rider_tables, mysql_connect, create_mysql_data_infra
+from db.operations import update_rider_tables, mysql_connect, execute_sql_from_file
 from get_data.scrape import collect_gp_urls, parse_html_and_format
 from get_data.send_requests import execute_async_requests
 from logger.log import setup_logger
@@ -16,6 +16,11 @@ if __name__ == "__main__":
         logger_tag="parsing_log",
         file_path="logger/logs/parsing.log",
         logging_level="ERROR",
+    )
+    sql_log = setup_logger(
+        logger_tag="sql_log",
+        file_path="logger/logs/sql.log",
+        logging_level="INFO",
     )
 
     # list containing motogp.com webpages listing riders and teams
@@ -35,14 +40,21 @@ if __name__ == "__main__":
         # parse html and output formatted data to file
         parse_html_and_format(rider_responses, gp_class, "riders_official")
 
+    # read each JSON file in ./data and return a boolean if the data from the JSON is the same as the data in the SQL table
+    # if identical_data == True -> run execute commands below this comment
+
     # create mysql database and tables to store rider & team data
     server_conn = mysql_connect("localhost", None)
     # execute sql commands to create data infra in mysql server
-    create_mysql_data_infra(server_conn)
+    execute_sql_from_file("./db/setup.sql", server_conn)
 
     # connect to mysql database
     db_conn = mysql_connect("localhost", "motogp")
-    # update rider tables in MYSQL database with JSON files from ./data/riders/
+    # update rider tables in MYSQL database with JSON files from ./data/
     update_rider_tables(db_conn)
+    # populate "teams" table from file
+    execute_sql_from_file("./db/populate_teams.sql", db_conn)
 
-    # execute sql commands from separate .sql file to create team tables via rider tables
+    # close db connections
+    server_conn.close()
+    db_conn.close()
