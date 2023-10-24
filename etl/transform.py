@@ -1,17 +1,49 @@
-from pydantic import Field, BaseModel, PositiveInt
+from pydantic import Field, BaseModel, validator, PositiveInt
 import country_converter as coco
 from bs4 import BeautifulSoup
 import httpx
 
 from typing import Literal, get_args, Optional
-from datetime import datetime
+from datetime import datetime, date
 import json
 import re
 
-from extract.helpers import extract_text
+from etl.extract import extract_text
 
 # define the options for the webpage to be scraped
 webpages = Literal["riders_official", "teams_official"]
+
+
+class Rider(BaseModel):
+    """Pydantic Base Model for GP Riders."""
+
+    rider_name: str
+    hero_hashtag: str
+    race_number: PositiveInt = Field(ge=0, le=99)
+    team: Optional[str]
+    bike: Optional[str]
+    representing_country: str = Field(max_length=2)
+    place_of_birth: Optional[str]
+    date_of_birth: Optional[date]
+    height: Optional[PositiveInt] = Field(ge=152, le=200)
+    weight: Optional[PositiveInt] = Field(ge=40, le=115)
+
+    # validate dob format
+    @validator("date_of_birth", pre=True)
+    def parse_dob(cls, value: str) -> date:
+        """Parse the Date of Birth of the rider from string to datetime.date object
+
+        Args:
+            value (str): The date string
+
+        Returns:
+            date: Formatted date of birth
+        """
+
+        # if the dob string value is NOT None
+        if value:
+            # reformat string date into YYYY-MM--DD format
+            return datetime.strptime(value, "%d/%m/%Y").date()
 
 
 def parse_html_and_format(
@@ -101,19 +133,6 @@ def collect_gp_urls(
     return urls
 
 
-class Rider(BaseModel):
-    rider_name: str
-    hero_hashtag: str
-    race_number: PositiveInt = Field(ge=0, le=99)
-    team: Optional[str]
-    bike: Optional[str]
-    representing_country: str = Field(max_length=2)
-    place_of_birth: Optional[str]
-    date_of_birth: Optional[datetime.date]
-    height: Optional[PositiveInt] = Field(ge=152, le=200)
-    weight: Optional[PositiveInt] = Field(ge=40, le=115)
-
-
 def extract_rider_data(response: httpx.Response) -> dict:
     # parse HTML from response using beautiful soup
     soup = BeautifulSoup(response.content, "html.parser")
@@ -160,15 +179,10 @@ def extract_rider_data(response: httpx.Response) -> dict:
             # set bike to None
             bike = None
 
-        # date of birth
-        dob_string = bio_elements[1].get_text(strip=True)
-        # if dob_string is not "-" (meaning that there is an actual data)
-        if "-" not in dob_string:
-            # convert to datetime
-            date_of_birth = datetime.strptime(dob_string, "%d/%m/%Y").strftime(
-                "%Y-%m-%d"
-            )
-        else:
+        # date of birth of rider
+        date_of_birth = bio_elements[1].get_text(strip=True)
+        # if "-" is in date_of_birth  (meaning that there is NO date)
+        if "-" in date_of_birth:
             # set date_of_birth to None
             date_of_birth = None
 
@@ -217,4 +231,4 @@ def extract_rider_data(response: httpx.Response) -> dict:
     )
 
     # return new_rider as a dict
-    return new_rider.dict()
+    return new_rider.model_dump(mode="json")
