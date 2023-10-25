@@ -1,13 +1,72 @@
+from bs4 import BeautifulSoup
 import httpx
 
 from urllib.parse import urlencode
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_fixed,
+    retry_if_exception_type,
+    retry_if_result,
+)
 import asyncio
 
 from configs.globals import SCRAPEOPS_API_KEY
 from logger import get_logger
 
-# get requests logger
+# get loggers
+parsing_log = get_logger(logger_name="parsing_log", module_name=__name__)
 request_log = get_logger(logger_name="request_log", module_name=__name__)
+
+
+def is_retryable_exception(exception: httpx._exceptions) -> bool:
+    """Define the conditions for retrying based on exception types.
+
+    Args:
+        exception (httpx._exception): HTTP exception from the httpx module
+
+    Returns:
+        bool: If any specificied exceptions have been raised by the HTTPX request
+    """
+    return isinstance(exception, (httpx.TimeoutException, httpx.ConnectError))
+
+
+def is_retryable_status_code(response: httpx.Response) -> httpx.Response.status_code:
+    """Define the conditions for retrying based on HTTP status codes.
+
+    Args:
+        response (httpx.Response): The HTTPX response object
+
+    Returns:
+        httpx.Response.status_code: HTTP status code of the request
+    """
+    return response.status_code in [500, 502, 503, 504]
+
+
+def is_retryable_content(response: httpx.Response) -> bool:
+    """Define the conditions for retrying based on response content.
+
+    Args:
+        response (httpx.Response): The HTTPX response object
+
+    Returns:
+        bool: If a failing phrase has been found in the response's HTML
+    """
+
+    # set found_failing_phrase to False
+    found_failing_phrase = False
+    # list of phrases that indicate a failing request
+    failing_phrases = ["you are blocked"]
+
+    # loop through phrases
+    for phrase in failing_phrases:
+        # if the phrase has been found in the HTML response
+        if phrase in response.text.lower():
+            # set the bool var to True
+            found_failing_phrase = True
+
+    # return the bool indicating if a "failing phrase" was found in the response's HTML
+    return found_failing_phrase
 
 
 async def log_response(response: httpx.Response) -> None:
@@ -24,6 +83,16 @@ async def log_response(response: httpx.Response) -> None:
     )
 
 
+# retry conditions and parameters if below function fails to get HTML response
+@retry(
+    retry=(
+        retry_if_exception_type(is_retryable_exception)
+        | retry_if_result(is_retryable_status_code)
+        | retry_if_result(is_retryable_content)
+    ),
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(5),
+)
 async def fetch_html(
     client: httpx.AsyncClient, semaphore: asyncio.Semaphore, url: str
 ) -> httpx.Response:
@@ -76,6 +145,7 @@ async def execute_async_requests(urls: list[str]) -> list[httpx.Response]:
     # initialize list to store async tasks
     tasks = []
 
+    # create semaphore (async limiter)
     semaphore = asyncio.Semaphore(5)
     # create async client with httpx to make requests
     async with httpx.AsyncClient(event_hooks={"response": [log_response]}) as client:
@@ -88,14 +158,6 @@ async def execute_async_requests(urls: list[str]) -> list[httpx.Response]:
 
     # return the response objects from all fetch_html tasks
     return responses
-
-
-from bs4 import BeautifulSoup
-
-from logger import get_logger
-
-# get parsing logger
-parsing_log = get_logger(logger_name="parsing_log", module_name=__name__)
 
 
 def extract_text(soup: BeautifulSoup, selector: str) -> str:
