@@ -1,3 +1,4 @@
+from airflow.models import Variable
 from bs4 import BeautifulSoup
 import httpx
 
@@ -10,13 +11,6 @@ from tenacity import (
     retry_if_result,
 )
 import asyncio
-
-from configs.globals import SCRAPEOPS_API_KEY
-from logger import get_logger
-
-# get loggers
-parsing_log = get_logger(logger_name="parsing_log", module_name=__name__)
-request_log = get_logger(logger_name="request_log", module_name=__name__)
 
 
 def is_retryable_exception(exception: httpx._exceptions) -> bool:
@@ -31,14 +25,14 @@ def is_retryable_exception(exception: httpx._exceptions) -> bool:
     return isinstance(exception, (httpx.TimeoutException, httpx.ConnectError))
 
 
-def is_retryable_status_code(response: httpx.Response) -> httpx.Response.status_code:
+def is_retryable_status_code(response: httpx.Response) -> bool:
     """Define the conditions for retrying based on HTTP status codes.
 
     Args:
         response (httpx.Response): The HTTPX response object
 
     Returns:
-        httpx.Response.status_code: HTTP status code of the request
+        bool: If the HTTP status code of the request is in the specified error status codes
     """
     return response.status_code in [500, 502, 503, 504]
 
@@ -69,20 +63,6 @@ def is_retryable_content(response: httpx.Response) -> bool:
     return found_failing_phrase
 
 
-async def log_response(response: httpx.Response) -> None:
-    """Log the response of a HTTP request.
-
-    Args:
-        response (httpx.Response): The HTTPX response object
-    """
-    # get the request details from the response object
-    request = response.request
-    # print the details of the response
-    request_log.info(
-        f"Response: {request.method} {request.url} - Status {response.status_code}"
-    )
-
-
 # retry conditions and parameters if below function fails to get HTML response
 @retry(
     retry=(
@@ -110,7 +90,7 @@ async def fetch_html(
     async with semaphore:
         # define the proxy parameters
         proxy_params = {
-            "api_key": SCRAPEOPS_API_KEY,
+            "api_key": Variable.get("secret_scrape_ops"),
             "url": url,
         }
         # make HTTP GET request
@@ -125,11 +105,13 @@ async def fetch_html(
             # return the response
             return response
         # if the request status code is NOT 200
+        """
         else:
             # log the error
             request_log.error(
                 f"HTTP ERROR ({response.status_code}) for the url: '{url}'"
             )
+        """
 
 
 async def execute_async_requests(urls: list[str]) -> list[httpx.Response]:
@@ -148,7 +130,7 @@ async def execute_async_requests(urls: list[str]) -> list[httpx.Response]:
     # create semaphore (async limiter)
     semaphore = asyncio.Semaphore(5)
     # create async client with httpx to make requests
-    async with httpx.AsyncClient(event_hooks={"response": [log_response]}) as client:
+    async with httpx.AsyncClient() as client:
         # loop through urls
         tasks = [
             asyncio.create_task(fetch_html(client, semaphore, url)) for url in urls
@@ -177,6 +159,8 @@ def extract_text(soup: BeautifulSoup, selector: str) -> str:
     # if the attribute is NOT found
     except AttributeError as err:
         # log error to parsing_log
+        """
         parsing_log.error(f"{err} from selector '{selector}'")
+        """
         # return None
         return None

@@ -1,18 +1,19 @@
-# Byte-compiled / optimized / DLL files
+# git / environment variables
+.git
+.env
+# astro
+astro
+# airflow 
+airflow_settings.yaml
+airflow-webserver.pid
+webserver_config.py
+airflow.cfg
+airflow.db
+# python
 __pycache__/
-# ignore Mac system files
-.DS_store
-
-# ignore VSCode project settings
-.vscode/
-# ignore virtual environemnt
 /venv/
-# ignore all .env files
-*.env
-
-# ignore log files inside logger/logs
-logger/logs/*
-
-
-# ignore output files in data/
-data/*
+.venv
+# VS Code Settings
+.vscode/
+# macOS specific
+.DS_Store 

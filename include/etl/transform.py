@@ -1,17 +1,14 @@
 from pydantic import Field, BaseModel, validator, PositiveInt
+from airflow.exceptions import AirflowException
 import country_converter as coco
 from bs4 import BeautifulSoup
 import httpx
 
-from typing import Literal, get_args, Optional
+from typing import Optional
 from datetime import datetime, date
-import json
 import re
 
-from etl.extract import extract_text
-
-# define the options for the webpage to be scraped
-webpages = Literal["riders_official", "teams_official"]
+from .scrape import extract_text
 
 
 class Rider(BaseModel):
@@ -46,42 +43,27 @@ class Rider(BaseModel):
             return datetime.strptime(value, "%d/%m/%Y").date()
 
 
-def parse_html_and_format(
-    responses: list[httpx.Response],
-    gp_class: str,
-    webpage: Literal["riders_official", "teams_official"],
-) -> None:
-    # get all arguments from webpages
-    webpage_options = get_args(webpages)
-    # raise assertion if the parameter webpage is NOT in webpage_options
-    assert webpage in webpage_options, f"'{webpage}' is not in {webpage_options}"
-
+def parse_html_and_format(responses: list[str]) -> dict:
     # initialize dict to store riders
     consolidated_data = {}
 
-    # loop through responses
+    # loop through GP classes
     for i, response in enumerate(responses):
-        # if responses are from the "Riders" page on motogp.com
-        if webpage == "riders_official":
-            # define file path for the formatted output
-            output_file = f"./data/{gp_class.lower()}_riders.json"
-            # call function to scrape rider data from each response in responses
-            data = extract_rider_data(response)
+        # call function to scrape rider data from each response in responses
+        data = extract_rider_data(response)
         # if data is NOT None
         if data:
             # update consolidated_data with data
             consolidated_data.update({i: data})
+        else:
+            # raise AirflowException
+            raise AirflowException("The data extraction from a rider's HTML failed.")
 
-    # write riders to a json file
-    with open(output_file, "w") as json_file:
-        json.dump(consolidated_data, json_file)
+    # return dict of parsed HTML data for each class
+    return consolidated_data
 
 
-def collect_gp_urls(
-    response: httpx.Response,
-    gp_class: str,
-    webpage: webpages,
-) -> list[str]:
+def collect_gp_urls(response: httpx.Response) -> dict[list[str]]:
     """Scrapes the riders or teams pageon  motogp.com for links to each rider/team in the class.
 
     Args:
@@ -89,53 +71,54 @@ def collect_gp_urls(
         gp_class (str): The GP class (ex. "MotoGP", "Moto2", "Moto3", "MotoE")
         webpage (Literal): Describes the webpage origin
 
-    Raises:
-        IndexError: If the list of riders is empty
-
     Returns:
-        list[str]: The list of URLs to each rider in the specified GP class.
+        dict[list[str]]: The list of URLs to each rider in the specified GP class.
     """
 
-    # get all arguments from webpages
-    webpage_options = get_args(webpages)
-    # raise assertion if the parameter webpage is NOT in webpage_options
-    assert webpage in webpage_options, f"'{webpage}' is not in {webpage_options}"
+    # initalize dict to store rider urls from all GP classes
+    all_rider_urls = {}
 
-    # initalize list to store rider urls
-    urls = []
+    # list of GP classes
+    gp_classes = ["MOTOGP", "MOTO2", "MOTO3", "MOTOE"]
 
-    # if the HTML is from the rider webpage on motogp.com
-    if webpage == "riders_official":
+    # loop through gp_classes
+    for gp_class in gp_classes:
         # define the CSS selector for the parent and child element
         parent = f"div[class*='rider-grid__{gp_class.lower()}']"
         child = "div[class*='rider-list__container'] a"
         # define url prefix
         url_prefix = "https://www.motogp.com"
 
-    # parse HTML with beautifulsoup
-    soup = BeautifulSoup(response.content, "html.parser")
+        # parse HTML with beautifulsoup
+        soup = BeautifulSoup(response.content, "html.parser")
 
-    # find all rider/team elements
-    elements = soup.select_one(parent)
-    # loop through attributes for each rider element
-    for attribs in elements.select(child):
-        # get href attribute
-        url = attribs["href"]
+        # initialize list to store urls in GP class
+        urls = []
 
-        # if url is not an empty string
-        if url:
-            # append url prefix to url
-            complete_url = url_prefix + url
-            # append url to rider_urls
-            urls.append(complete_url)
+        # find all rider/team elements
+        elements = soup.select_one(parent)
+        # loop through attributes for each rider element
+        for attribs in elements.select(child):
+            # get href attribute
+            url = attribs["href"]
+
+            # if url is not an empty string
+            if url:
+                # append url prefix to url
+                complete_url = url_prefix + url
+                # append url to rider_urls
+                urls.append(complete_url)
+
+        # update all_rider_urls with the list of URLs from that class
+        all_rider_urls.update({gp_class: urls})
 
     # return the list of rider_urls
-    return urls
+    return all_rider_urls
 
 
-def extract_rider_data(response: httpx.Response) -> dict:
+def extract_rider_data(response_content: str) -> dict:
     # parse HTML from response using beautiful soup
-    soup = BeautifulSoup(response.content, "html.parser")
+    soup = BeautifulSoup(response_content, "html.parser")
 
     # the name of the rider
     rider_name = extract_text(soup, "span[class*='rider-hero__info-name']")
