@@ -135,6 +135,7 @@ def dict_to_df_in_s3(data: dict, key: str, bucket_name: str) -> None:
             df=df,
             path=f"s3://{bucket_name}/{key}",
             boto3_session=hook.get_session(),
+            index=False,
         )
     except:
         # raise AirflowException

@@ -100,18 +100,8 @@ async def fetch_html(
             timeout=60,
         )
 
-        # if the response status code is 200 - OK
-        if response.status_code == 200:
-            # return the response
-            return response
-        # if the request status code is NOT 200
-        """
-        else:
-            # log the error
-            request_log.error(
-                f"HTTP ERROR ({response.status_code}) for the url: '{url}'"
-            )
-        """
+        # return the response
+        return response
 
 
 async def execute_async_requests(urls: list[str]) -> list[httpx.Response]:

@@ -82,16 +82,24 @@ def taskflow():
 
             # call function to parse html and extract/format data
             data = parse_html_and_format(htmls)
+
+            # initialize dict to store all data in single object
+            consolidated_data = {}
             # loop through dicts in data
-            for data_dict in data:
+            for i, data_dict in enumerate(data.values()):
                 # key to write dataframes to S3 bucket
                 write_key = f"transformed_rider_data/{_class}/{current_date}/riders.csv"
                 # append write_key to destination_keys
                 destination_keys.append(write_key)
 
+                # update consolidated_dict with data_dict
+                consolidated_data.update({i: data_dict})
+
                 # convert data_dict to dataframe and upload to S3 bucket
                 dict_to_df_in_s3(
-                    data=data_dict, key=write_key, bucket_name="motogp-data-project"
+                    data=consolidated_data,
+                    key=write_key,
+                    bucket_name="motogp-data-project",
                 )
 
         # return list of filepaths of uploaded JSON files
