@@ -132,7 +132,7 @@ async def execute_async_requests(urls: list[str]) -> list[httpx.Response]:
     return responses
 
 
-def extract_text(soup: BeautifulSoup, selector: str) -> str:
+def extract_text(element: BeautifulSoup, selector: str) -> str:
     """Extracts text from a HTML element.
 
     Args:
@@ -145,7 +145,7 @@ def extract_text(soup: BeautifulSoup, selector: str) -> str:
 
     try:
         # return the text from the css selector
-        return soup.select_one(selector).get_text(strip=True).upper()
+        return element.select_one(selector).get_text(strip=True).upper()
     # if the attribute is NOT found
     except AttributeError as err:
         # log error to parsing_log
