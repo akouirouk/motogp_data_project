@@ -49,42 +49,46 @@ async def extract_session_html(page: Page) -> dict[str, str]:
         events = await Dropdown.get_options(page, "event")
         # loop through events
         for event in events:
+            # continue with loop if event is a Test
+            if "TEST" in event:
+                continue
             # select event
             page = await Dropdown.select(page, Dropdown.css_selectors["event"], event)
 
             # get all category options
             categories = await Dropdown.get_options(page, "category")
+            print(categories)
             # loop through categories
             for cat in categories:
                 # define selector
                 selector = Dropdown.css_selectors["category"]
-                # wait for option
-                await Dropdown.wait_for_opts(page, selector, cat)
                 # select category
                 page = await Dropdown.select(page, selector, cat)
 
                 # get all session options
                 sessions = await Dropdown.get_options(page, "session")
+
+                # race session for all gp classes except MotoE (they have two races)
+                selected_sessions = ["RAC"]
+                # if the selected category is MotoE and there two MotoE races (they used to only have one race per weekend)
+                if cat == "MotoE™" and "RAC2" in sessions:
+                    # get both races in the "Session" dropdown
+                    selected_sessions = ["RAC2", "RAC1"]
+
                 # define selector
-                selector = Dropdown.css_selectors["category"]
-                # wait for option
-                await Dropdown.wait_for_opts(page, selector, "RAC")
-                # continue with loop if RAC not in sessions
-                if "RAC" not in sessions:
-                    continue
-                else:
+                selector = Dropdown.css_selectors["session"]
+                # loop through selected_sessions
+                for sess in selected_sessions:
+                    # select session
                     page = await Dropdown.select(
-                        page, Dropdown.css_selectors["session"], "RAC"
+                        page, Dropdown.css_selectors["session"], sess
                     )
 
                     # append html to htmls
-                    htmls.update({f"{year}_{event}_{cat}_RAC": await page.content()})
+                    htmls.update({f"{year}_{event}_{cat}_{sess}": await page.content()})
 
                 # sleep for 1-5 seconds - to simulate non-robotic behavior
-                await asyncio.sleep(randint(1, 7))
+                await asyncio.sleep(randint(3, 8))
 
     # return htmls of each session
     return htmls
-
-
-asyncio.run(get_gp_race_results())

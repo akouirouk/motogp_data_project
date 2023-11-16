@@ -17,3 +17,5 @@ __pycache__/
 .vscode/
 # macOS specific
 .DS_Store 
+# test file
+/test.py
