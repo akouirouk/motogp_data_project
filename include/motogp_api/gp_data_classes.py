@@ -1,7 +1,8 @@
 from pydantic import Field, BaseModel, ConfigDict, validator
 
+from typing import Optional, Annotated
 from datetime import datetime, date
-from typing import Optional
+from decimal import Decimal
 
 
 class MotoGpEvent(BaseModel):
@@ -10,7 +11,7 @@ class MotoGpEvent(BaseModel):
     # do not allow other attributes
     model_config = ConfigDict(extra="forbid")
 
-    event_id: str
+    id: str
     event_name: str
     sponsored_name: str
     circuit_name: str
@@ -41,11 +42,38 @@ class MotoGpEvent(BaseModel):
             return datetime.strptime(value, "%Y-%m-%d").date()
 
 
-class Riders(BaseModel):
+class Rider(BaseModel):
     """Data schema for riders in the MotoGP championship."""
 
-    # do not allow other attributes
-    model_config = ConfigDict(extra="forbid")
+    id: str
+    name: str
+    nickname: str
+    number: int
+    team: str
+    constructor: str
+    category: str
+    representing_country: str
+    representing_country_iso: str = Field(max_length=2)
+    birth_place: Optional[str]
+    years_old: Optional[Annotated[Decimal, Field(max_digits=2)]]
+    dob: Optional[date]
+
+    # validate dob format
+    @validator("dob", pre=True)
+    def parse_dob(cls, value: str) -> date:
+        """Parse the Date of Birth of the rider from string to datetime.date object
+
+        Args:
+            value (str): The date string
+
+        Returns:
+            date: Formatted date of birth
+        """
+
+        # if the dob string value is NOT None
+        if value:
+            # reformat string date into YYYY-MM--DD format
+            return datetime.strptime(value, "%Y-%m-%d").date()
 
 
 class Result(BaseModel):
