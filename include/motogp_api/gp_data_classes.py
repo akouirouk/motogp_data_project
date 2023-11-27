@@ -15,12 +15,12 @@ class MotoGpEvent(BaseModel):
     event_name: str
     sponsored_name: str
     circuit_name: str
-    country_name: str
-    country_iso: str
-    place: str
+    country_name: Optional[str]
+    country_iso: Optional[str]
+    place: Optional[str]
     year: int = Field(ge=1949, le=2050)
     start_date: date
-    end_date: Optional[date]
+    end_date: date
     test: bool
     status: str
 

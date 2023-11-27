@@ -1,7 +1,9 @@
 from datetime import datetime
+from typing import Literal
 
-from include.motogp_api.gp_data_classes import MotoGpEvent, Rider
 from include.motogp_api.helpers import response_to_json, api_data_refactoring
+from include.motogp_api.gp_data_classes import MotoGpEvent, Rider
+from include.helpers import date_now
 
 
 def get_season_id(selected_year: int) -> str:
@@ -84,7 +86,18 @@ def events_by_year(year: int) -> dict:
         # update consolidated data dict
         refactored_event_data.update({indx: new_event_dict})
 
-    return refactored_event_data
+    # order refactored_event_data by start_date
+    ordered_event_data = dict(
+        sorted(
+            refactored_event_data.items(),
+            key=lambda x: datetime.strptime(x[1]["start_date"], "%Y-%m-%d"),
+        )
+    )
+    # reset the index of keys
+    ordered_event_data = {
+        index: value for index, value in enumerate(ordered_event_data.values())
+    }
+    return ordered_event_data
 
 
 def current_riders() -> dict:
@@ -145,3 +158,47 @@ def get_rider_history(rider_name: str) -> dict:
     rider_history = response_to_json(riders_endpoint)
     # return the refactored version of rider_history
     return api_data_refactoring(rider_history)
+
+
+def categories_by_season(year: int) -> list[dict]:
+    # get current year
+    current_year = date_now("year")
+
+    # check if the year is between the available parameters
+    if 1949 > year > current_year:
+        # raise a value error
+        raise ValueError(
+            f"The year '{year}' is not within the range 1949 - {current_year}"
+        )
+
+    # get the season id
+    season_id = get_season_id(year)
+    # url to "riders" endpoint - data on all riders in the current championship
+    categories_endpoint = f"https://api.motogp.pulselive.com/motogp/v1/results/categories?seasonUuid={season_id}"
+
+    # call function to convert response to dict
+    return response_to_json(categories_endpoint)
+
+
+def get_category_id(categories: dict, gp_cat: str):
+    # loop through categories from year
+    for cat in categories:
+        # refactor data
+        data = api_data_refactoring(cat)
+
+        # make category name uppercase
+        cat_name = str(data["name"]).upper()
+        # if the trademark symbol is in cat_name
+        if "™" in cat_name:
+            # remove it by replacing with an empty string
+            cat_name = cat_name.replace("™", "")
+
+        # if the name matches the category
+        if cat_name == gp_cat.upper():
+            # return the id of category
+            return data["id"]
+        else:
+            continue
+
+    # raise ValueError that the category is not
+    raise ValueError(f"The category '{gp_cat}' is not a valid category.")

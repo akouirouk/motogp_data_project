@@ -1,4 +1,13 @@
+from datetime import datetime, date
 from decimal import Decimal
+from typing import Literal
+
+
+def date_now(request: Literal["year", "full_date"]) -> int | date:
+    if request == "year":
+        return datetime.now().year
+    elif request == "full_date":
+        return datetime.now()
 
 
 def text_to_num(text: str) -> int:
